@@ -1,0 +1,101 @@
+{# tutorial/templates/tutorial/people.html #}
+{% load render_table from django_tables2 %}
+<!doctype html>
+<html>
+    <head>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+        <title>List of persons</title>
+        <style>
+            table {
+  border-collapse: collapse;
+}
+
+table, td, th {
+  border: 1px solid black;
+  text-align: center
+}
+.popup{
+    width: 900px;
+    margin: auto;
+    text-align: center
+}
+.popup img{
+    width: 200px;
+    height: 200px;
+    cursor: pointer
+}
+.show{
+    z-index: 999;
+    display: none;
+}
+.show .overlay{
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,.66);
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+.show .img-show{
+    width: 600px;
+    height: 400px;
+    background: #FFF;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%);
+    overflow: hidden
+}
+.img-show span{
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 99;
+    cursor: pointer;
+}
+.img-show img{
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+        </style>
+    </head>
+    <body>
+        {% render_table object_list %}
+    </body>
+    </div>
+<div class="show">
+  <div class="overlay"></div>
+  <div class="img-show">
+    <span>X</span>
+    <img src="">
+  </div>
+</div>
+<script>
+    window.onload = function(){
+    var total_rows = document.getElementsByTagName("tr");
+    var len = total_rows.length;
+    for (i = 1; i < total_rows.length; i++) {
+      var tds = total_rows[i].getElementsByTagName("td")
+      var file_name = tds[tds.length-1].innerHTML
+      total_rows[i].getElementsByTagName("td")[tds.length-1].innerHTML = '<a href="#" class="image-link" src="/image/'+ file_name +'/">'+file_name+' <a>';
+    }
+<!--    $('.image-link').magnificPopup({type:'image'});-->
+
+    //dom not only ready, but everything is loaded
+   $(".image-link").click(function () {
+        var $src = $(this).attr("src");
+        $(".show").fadeIn();
+        $(".img-show img").attr("src", $src);
+    });
+
+    $("span, .overlay").click(function () {
+        $(".show").fadeOut();
+    });
+};
+
+
+</script>
+</html>

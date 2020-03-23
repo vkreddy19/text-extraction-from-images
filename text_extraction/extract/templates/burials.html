@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% load static %}
+
+{% block content %}
+
+<table>
+    <tr >
+        <th>Field 1</th>
+        ...
+        <th>Field N</th>
+    </tr>
+    {% for item in query_results %}
+    <tr>
+        <td style="border: 1px solid black;">{{ item.name }}</td>
+        <td>{{ item.id }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
