@@ -22,9 +22,11 @@ def my_image(request, file):
     image_data = open(os.path.join("extract/tmp/", file), "rb").read()
     return HttpResponse(image_data, content_type="image/jpg")
 
+
 class BurialsListView(ListView):
     model = Burials
     template_name = 'burials_list_view.html'
+
 
 def burials(request):
     query_results = Burials.objects.all()
@@ -70,13 +72,47 @@ def handle_uploaded_file(file):
         lines_image = draw_lines(bw_image[0:200, ])
         hor_lines, vert_lines = find_lines_position(lines_image)
         print(hor_lines, vert_lines)
-        fields = get_b2_values(bw_image, hor_lines, vert_lines)
         try:
-            record = Burials.objects.get(id=image_id)
-            Burials.objects.filter(id=image_id).update(form_type='b2', time=datetime.now(), image_name=image_name,
+            fields = get_b2_values(bw_image, hor_lines, vert_lines)
+        except:
+            print("unable to parase as b2 image")
+            return
+        try:
+            Burials.objects.get(id=image_id)
+            Burials.objects.filter(id=image_id).update(form_type=form_type, time=datetime.now(), image_name=image_name,
                                                        **fields)
         except Burials.DoesNotExist:
-            Burials(id=image_id,form_type='b2', time=datetime.now(), image_name=image_name, **fields).save()
+            Burials(id=image_id, form_type=form_type, time=datetime.now(), image_name=image_name, **fields).save()
+
+    elif form_type == 'b3_lined':
+        lines_image = draw_lines(bw_image[0:250, ], 5, 10, vertical_required=0)
+        hor_lines = get_b3_lines_position(lines_image)
+        print(hor_lines)
+        if len(hor_lines)<4:
+            print("unable to parse as b3 image")
+            # raise  ValueError("As")
+            return
+        if hor_lines[0]<20:
+            hor_lines = hor_lines[1:]
+        fields = get_b3_values(bw_image, hor_lines)
+        try:
+            Burials.objects.get(id=image_id)
+            Burials.objects.filter(id=image_id).update(form_type=form_type, time=datetime.now(), image_name=image_name,
+                                                       **fields)
+        except Burials.DoesNotExist:
+            Burials(id=image_id, form_type=form_type, time=datetime.now(), image_name=image_name, **fields).save()
+    elif form_type == 'b4_no_line':
+        fields = find_b4_values(bw_image[0:250, ])
+        if not fields:
+            print("unable to parse as b4_no_line")
+            raise ValueError("b4")
+        try:
+            Burials.objects.get(id=image_id)
+            Burials.objects.filter(id=image_id).update(form_type=form_type, time=datetime.now(), image_name=image_name,
+                                                       **fields)
+        except Burials.DoesNotExist:
+            Burials(id=image_id, form_type=form_type, time=datetime.now(), image_name=image_name, **fields).save()
+        raise ValueError("done")
     else:
         print("unsupported form_type")
 
@@ -128,6 +164,87 @@ def get_b2_values(bw_image, hor_lines, vert_lines):
     return result
 
 
+def get_b3_values(bw_image, hor_lines):
+
+    row_len = int(bw_image.shape[1] / 2)
+
+    name = bw_image[0:hor_lines[0], 110:]
+    lot = bw_image[hor_lines[0] + 4:hor_lines[1], 90:row_len]
+    section = bw_image[hor_lines[0] + 4:hor_lines[1], row_len + 70:]
+    grave = bw_image[hor_lines[1] + 4:hor_lines[2], 110:row_len]
+    date = bw_image[hor_lines[2] + 4:hor_lines[3], 190:row_len + 10]
+
+    # cv2.imwrite("name.jpg", name)
+    # cv2.imwrite("date.jpg", date)
+    # cv2.imwrite("section.jpg", section)
+    # cv2.imwrite("lot.jpg", lot)
+    # cv2.imwrite("grave.jpg", grave)
+    result = {
+        "name": pt.image_to_string(name),
+        "date": pt.image_to_string(date,
+                                   config=r"-c tessedit_char_whitelist=0123456789/,.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"),
+        "section": pt.image_to_string(section),
+        "lot": pt.image_to_string(lot),
+        "grave": pt.image_to_string(grave, config=r"-c tessedit_char_whitelist=0123456789 --psm 6"),
+    }
+    result['name'] = result['name'].split("\n")[-1]
+    result['date'] = format_date(result['date'])
+    print(result)
+    return result
+
+
+def find_b4_values(img):
+    gray = cv2.bitwise_not(img)
+    bw_image = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
+    cv2.imwrite('line image.jpg', bw_image)
+    rows_sum = bw_image.sum(axis=1)
+
+    row_indexes = []
+    i = 0
+    while i < len(rows_sum):
+        if not rows_sum[i]:
+            i += 1
+            continue
+        else:
+            start = i
+            count = 0
+            while i < len(rows_sum) and rows_sum[i]:
+                count += 1
+                i += 1
+            if count > 15:
+                row_indexes.append((start, i))
+        i += 1
+    if len(row_indexes) < 4:
+        return
+    else:
+        print()
+
+    row_len = int(bw_image.shape[1] / 2)
+
+    name = img[row_indexes[0][0]-10:row_indexes[0][1]+10, ]
+    lot = img[row_indexes[1][0]-10: row_indexes[1][1]+10, :row_len-40]
+    section = img[row_indexes[1][0]-10:row_indexes[1][1]+10, row_len-40:]
+    grave = img[row_indexes[2][0]-10: row_indexes[2][1]+10, :row_len-20]
+    date = img[row_indexes[3][0]-10: row_indexes[3][1]+10, ]
+
+    cv2.imwrite("name.jpg", name)
+    cv2.imwrite("date.jpg", date)
+    cv2.imwrite("section.jpg", section)
+    cv2.imwrite("lot.jpg", lot)
+    cv2.imwrite("grave.jpg", grave)
+    result = {
+        "name": pt.image_to_string(name),
+        "date": pt.image_to_string(date,
+                                   config=r"-c tessedit_char_whitelist=0123456789/,.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"),
+        "section": pt.image_to_string(section),
+        "lot": pt.image_to_string(lot),
+        "grave": pt.image_to_string(grave, config=r"-c tessedit_char_whitelist=0123456789 --psm 6"),
+    }
+    result['name'] = result['name'].split("\n")[-1]
+    result['date'] = format_date(result['date'])
+    print(result)
+    return result
+
 def upload_file(request):
     if request.method == 'POST':
         print(request.FILES)
@@ -161,7 +278,7 @@ class FileFieldView(FormView):
             return self.form_invalid(form)
 
 
-def find_lines_position(array_2d): #black and white
+def find_lines_position(array_2d): #b2 #black and white
     array_2d = array_2d / 255
     rows_sum = array_2d.sum(axis=1)
     cols_sum = array_2d.sum(axis=0)
@@ -172,7 +289,6 @@ def find_lines_position(array_2d): #black and white
         if rows_sum[i-1] != 0:
 
             if ((rows_sum[i]-rows_sum[i-1])/rows_sum[i-1]) > 8:
-                # print(i, rows_sums[i-1] , rows_sums[i])
                 row_indexes.append(i)
 
     for i in range(1, len(cols_sum)):
@@ -182,7 +298,25 @@ def find_lines_position(array_2d): #black and white
     return row_indexes, col_indexes
 
 
-def draw_lines(image_array):
+def get_b3_lines_position(array_2d):
+        array_2d = array_2d / 255
+        rows_sum = array_2d.sum(axis=1)
+        row_indexes = []
+        i = 0
+        while i < len(rows_sum):
+            if not rows_sum[i]:
+                i += 1
+                continue
+            else:
+                row_indexes.append(i)
+                while i < len(rows_sum) and rows_sum[i]:
+                    i += 1
+                i += 1
+
+        return row_indexes
+
+
+def draw_lines(image_array, row_size=5, col_size=3, horizontal_required=1, vertical_required = 1):
 
     gray = cv2.bitwise_not(image_array)
     bw = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, -2)
@@ -190,20 +324,26 @@ def draw_lines(image_array):
     # Create the images that will use to extract the horizontal and vertical lines
     horizontal = np.copy(bw)
     vertical = np.copy(bw)
-
     # Specify size on horizontal axis
     cols = horizontal.shape[1]
-    horizontal_size = cols // 3
-
+    horizontal_size = cols // col_size
     # Create structure element for extracting horizontal lines through morphology operations
     horizontalStructure = cv2.getStructuringElement(cv2.MORPH_RECT, (horizontal_size, 1))
+
 
     # Apply morphology operations
     horizontal = cv2.erode(horizontal, horizontalStructure)
     horizontal = cv2.dilate(horizontal, horizontalStructure)
 
+
+    if not vertical_required:
+        temp = np.full(horizontal.shape, 0, dtype=horizontalStructure[0][0].dtype)
+        mask = temp == 0
+        temp[mask] = horizontal[mask]
+        return temp
+
     rows = vertical.shape[0]
-    verticalsize = rows // 5
+    verticalsize = rows // row_size
 
     # Create structure element for extracting vertical lines through morphology operations
     verticalStructure = cv2.getStructuringElement(cv2.MORPH_RECT, (1, verticalsize))
