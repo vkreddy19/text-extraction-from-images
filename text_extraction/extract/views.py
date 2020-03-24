@@ -14,37 +14,8 @@ from datetime import datetime
 from django.views.generic import ListView
 
 
+
 form_types = {0: 'b1', 1: 'b2', 2: 'b3_lined', 3: 'b4_no_line', 4: 'b5_hand_written'}
-
-
-def my_image(request, file):
-    print(file)
-    image_data = open(os.path.join("extract/tmp/", file), "rb").read()
-    return HttpResponse(image_data, content_type="image/jpg")
-
-
-class BurialsListView(ListView):
-    model = Burials
-    template_name = 'burials_list_view.html'
-
-
-def burials(request):
-    query_results = Burials.objects.all()
-    return render(request, 'burials.html', {'query_results': query_results})
-
-
-def get_id_from_filename(filename):
-    try:
-        return filename.split("_")[1]
-    except IndexError:
-        raise ValueError("Unable to get id from the filename.")
-
-
-def write_content_to_disk(file):
-    with open('extract/tmp/' + file.name, 'wb+') as destination:
-        for chunk in file.chunks():
-            destination.write(chunk)
-    return os.path.join('extract/tmp', file.name)
 
 
 def get_form_type(image_path):
@@ -65,7 +36,8 @@ def handle_uploaded_file(file):
     image_id = get_id_from_filename(image_name)
     form_type = get_form_type(image_path)
 
-    original_image = cv2.imread(image_path, cv2.COLOR_BGR2GRAY)
+    original_image = cv2.imread(image_path)
+    original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
     (thresh, bw_image) = cv2.threshold(original_image, 127, 255, cv2.THRESH_BINARY)
 
     if form_type == 'b2':
@@ -88,11 +60,11 @@ def handle_uploaded_file(file):
         lines_image = draw_lines(bw_image[0:250, ], 5, 10, vertical_required=0)
         hor_lines = get_b3_lines_position(lines_image)
         print(hor_lines)
-        if len(hor_lines)<4:
+        if len(hor_lines) < 4:
             print("unable to parse as b3 image")
             # raise  ValueError("As")
             return
-        if hor_lines[0]<20:
+        if hor_lines[0] < 20:
             hor_lines = hor_lines[1:]
         fields = get_b3_values(bw_image, hor_lines)
         try:
@@ -105,34 +77,17 @@ def handle_uploaded_file(file):
         fields = find_b4_values(bw_image[0:250, ])
         if not fields:
             print("unable to parse as b4_no_line")
-            raise ValueError("b4")
+            # raise ValueError("b4")
+            return
         try:
             Burials.objects.get(id=image_id)
             Burials.objects.filter(id=image_id).update(form_type=form_type, time=datetime.now(), image_name=image_name,
                                                        **fields)
         except Burials.DoesNotExist:
             Burials(id=image_id, form_type=form_type, time=datetime.now(), image_name=image_name, **fields).save()
-        raise ValueError("done")
+        # raise ValueError("done")
     else:
         print("unsupported form_type")
-
-
-def format_date(date):
-    date_field = date.split("/")
-    if len(date_field[-1]) == 2:
-        if len(date_field[-1]) == 2:
-            date_field[-1] = "19" + date_field[-1]
-    elif len(date_field[-1]) == 4: #YYYY
-        if date_field[-1].isdigit():
-            if date_field[-1][:2] not in ["19", "20"]: #eg: 9016
-                if int(date_field[-1][2:]) > 20:
-                    date_field[-1] = "19"+date_field[-1][2:]
-                elif date_field[-1].startswith("2"):
-                    date_field[-1] = "20"+date_field[-1][2:]
-                elif date_field[-1].startswith("1"):
-                    date_field[-1] = "19" + date_field[-1][2:]
-    print(date, "/".join(date_field))
-    return "/".join(date_field)
 
 
 def get_b2_values(bw_image, hor_lines, vert_lines):
@@ -189,7 +144,6 @@ def get_b3_values(bw_image, hor_lines):
     }
     result['name'] = result['name'].split("\n")[-1]
     result['date'] = format_date(result['date'])
-    print(result)
     return result
 
 
@@ -211,10 +165,11 @@ def find_b4_values(img):
             while i < len(rows_sum) and rows_sum[i]:
                 count += 1
                 i += 1
-            if count > 15:
+            if count > 10:
                 row_indexes.append((start, i))
         i += 1
     if len(row_indexes) < 4:
+        print(row_indexes)
         return
     else:
         print()
@@ -227,21 +182,25 @@ def find_b4_values(img):
     grave = img[row_indexes[2][0]-10: row_indexes[2][1]+10, :row_len-20]
     date = img[row_indexes[3][0]-10: row_indexes[3][1]+10, ]
 
-    cv2.imwrite("name.jpg", name)
-    cv2.imwrite("date.jpg", date)
-    cv2.imwrite("section.jpg", section)
-    cv2.imwrite("lot.jpg", lot)
-    cv2.imwrite("grave.jpg", grave)
-    result = {
-        "name": pt.image_to_string(name),
-        "date": pt.image_to_string(date,
-                                   config=r"-c tessedit_char_whitelist=0123456789/,.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"),
-        "section": pt.image_to_string(section),
-        "lot": pt.image_to_string(lot),
-        "grave": pt.image_to_string(grave, config=r"-c tessedit_char_whitelist=0123456789 --psm 6"),
-    }
-    result['name'] = result['name'].split("\n")[-1]
-    result['date'] = format_date(result['date'])
+    # cv2.imwrite("name.jpg", name)
+    # cv2.imwrite("date.jpg", date)
+    # cv2.imwrite("section.jpg", section)
+    # cv2.imwrite("lot.jpg", lot)
+    # cv2.imwrite("grave.jpg", grave)
+    try:
+        result = {
+            "name": pt.image_to_string(name),
+            "date": pt.image_to_string(date,
+                                       config=r"-c tessedit_char_whitelist=0123456789/,.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"),
+            "section": pt.image_to_string(section),
+            "lot": pt.image_to_string(lot),
+            "grave": pt.image_to_string(grave, config=r"-c tessedit_char_whitelist=0123456789 --psm 6"),
+        }
+        result['section'] = result['section'].split("\n")[-1] if result['section'] else ''
+        result['date'] = format_date(result['date'])
+    except SystemError as e:
+        print(e)
+        return
     print(result)
     return result
 
@@ -356,3 +315,74 @@ def draw_lines(image_array, row_size=5, col_size=3, horizontal_required=1, verti
     vertical[mask] = horizontal[mask]
     # cv2.imwrite("t1.jpg", vertical)
     return vertical
+
+
+def format_date(date):
+    date_field = date.split("/")
+    if len(date_field[-1]) == 2:
+        if len(date_field[-1]) == 2:
+            date_field[-1] = "19" + date_field[-1]
+    elif len(date_field[-1]) == 4: #YYYY
+        if date_field[-1].isdigit():
+            if date_field[-1][:2] not in ["19", "20"]: #eg: 9016
+                if int(date_field[-1][2:]) > 20:
+                    date_field[-1] = "19"+date_field[-1][2:]
+                elif date_field[-1].startswith("2"):
+                    date_field[-1] = "20"+date_field[-1][2:]
+                elif date_field[-1].startswith("1"):
+                    date_field[-1] = "19" + date_field[-1][2:]
+    print(date, "/".join(date_field))
+    return "/".join(date_field)
+
+
+def burials(request):
+    query_results = Burials.objects.all()
+    return render(request, 'burials.html', {'query_results': query_results})
+
+
+def get_id_from_filename(filename):
+    try:
+        return filename.split("_")[1]
+    except IndexError:
+        raise ValueError("Unable to get id from the filename.")
+
+
+def write_content_to_disk(file):
+    with open('extract/tmp/' + file.name, 'wb+') as destination:
+        for chunk in file.chunks():
+            destination.write(chunk)
+    return os.path.join('extract/tmp', file.name)
+
+
+def my_image(request, file):
+    print(file)
+    image_data = open(os.path.join("extract/tmp/", file), "rb").read()
+    return HttpResponse(image_data, content_type="image/jpg")
+
+
+class BurialsListView(ListView):
+    model = Burials
+    template_name = 'burials_list_view.html'
+
+import csv
+
+from django.http import HttpResponse
+
+
+
+def export_to_csv(request):
+    # The only line to customize
+    model_class = Burials
+
+    meta = model_class._meta
+    field_names = [field.name for field in meta.fields]
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename={}.csv'.format(meta)
+    writer = csv.writer(response)
+
+    writer.writerow(field_names)
+    for obj in model_class.objects.all():
+        row = writer.writerow([getattr(obj, field) for field in field_names])
+
+    return response
