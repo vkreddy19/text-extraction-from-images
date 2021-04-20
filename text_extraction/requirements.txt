@@ -179,7 +179,7 @@ protobuf==3.11.3
 proxybroker==0.3.2
 psutil==5.6.3
 ptyprocess==0.6.0
-py==1.8.0
+py==1.10.0
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
 PyAutoGUI==0.9.47
