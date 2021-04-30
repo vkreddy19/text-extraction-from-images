@@ -322,7 +322,7 @@ requests==2.22.0
 requests-file==1.4.3
 requests-oauthlib==1.2.0
 rope==0.14.0
-rsa==4.0
+rsa==4.7
 ruamel-yaml==0.15.46
 s3transfer==0.2.1
 scikit-image==0.15.0
